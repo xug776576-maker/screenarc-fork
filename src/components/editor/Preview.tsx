@@ -26,6 +26,7 @@ export const Preview = memo(
   }) => {
     const {
       videoUrl,
+      audioUrl,
       cutRegions,
       speedRegions,
       webcamVideoUrl,
@@ -48,6 +49,7 @@ export const Preview = memo(
     } = useEditorStore(
       useShallow((state) => ({
         videoUrl: state.videoUrl,
+        audioUrl: state.audioUrl,
         cutRegions: state.cutRegions,
         speedRegions: state.speedRegions,
         webcamVideoUrl: state.webcamVideoUrl,
@@ -76,6 +78,7 @@ export const Preview = memo(
     const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null)
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const webcamVideoRef = useRef<HTMLVideoElement>(null)
+    const audioRef = useRef<HTMLAudioElement>(null)
     const animationFrameId = useRef<number>()
     const [controlBarWidth, setControlBarWidth] = useState(0)
 
@@ -212,24 +215,33 @@ export const Preview = memo(
       const video = videoRef.current
       if (!video) return
       const webcamVideo = webcamVideoRef.current
+      const audio = audioRef.current
       if (isPlaying) {
         video.play().catch(console.error)
         webcamVideo?.play().catch(console.error)
+        audio?.play().catch(console.error)
       } else {
         video.pause()
         webcamVideo?.pause()
+        audio?.pause()
         // When pausing, reset playbackRate to 1 so scrubbing is at normal speed
         video.playbackRate = 1
         if (webcamVideo) webcamVideo.playbackRate = 1
+        if (audio) audio.playbackRate = 1
       }
     }, [isPlaying, videoRef])
 
     // Effect to handle volume and mute state
     useEffect(() => {
       const video = videoRef.current
+      const audio = audioRef.current
       if (video) {
-        video.volume = volume
-        video.muted = isMuted
+        // Video is always muted when we have a separate audio track
+        video.muted = true
+      }
+      if (audio) {
+        audio.volume = volume
+        audio.muted = isMuted
       }
     }, [volume, isMuted, videoRef])
 
@@ -251,6 +263,7 @@ export const Preview = memo(
     const handleTimeUpdate = () => {
       if (!videoRef.current) return
       const video = videoRef.current
+      const audio = audioRef.current
       const newTime = video.currentTime
 
       // Handle speed regions
@@ -267,6 +280,13 @@ export const Preview = memo(
       if (webcamVideoRef.current) {
         webcamVideoRef.current.currentTime = newTime
         webcamVideoRef.current.playbackRate = video.playbackRate // Sync webcam speed
+      }
+      if (audio) {
+        // Sync audio with video
+        if (Math.abs(audio.currentTime - newTime) > 0.1) {
+          audio.currentTime = newTime
+        }
+        audio.playbackRate = video.playbackRate // Sync audio speed
       }
       setCurrentTime(newTime)
     }
@@ -315,6 +335,9 @@ export const Preview = memo(
         videoRef.current.currentTime = value
         setCurrentTime(value)
       }
+      if (audioRef.current) {
+        audioRef.current.currentTime = value
+      }
     }
 
     const handleRewind = () => {
@@ -323,6 +346,9 @@ export const Preview = memo(
       setCurrentTime(rewindTime)
       if (videoRef.current) {
         videoRef.current.currentTime = rewindTime
+      }
+      if (audioRef.current) {
+        audioRef.current.currentTime = rewindTime
       }
     }
 
@@ -369,6 +395,13 @@ export const Preview = memo(
           onEnded={() => setPlaying(false)}
           style={{ display: 'none' }}
         />
+        {audioUrl && (
+          <audio
+            ref={audioRef}
+            src={audioUrl}
+            style={{ display: 'none' }}
+          />
+        )}
         {webcamVideoUrl && (
           <video
             ref={webcamVideoRef}
