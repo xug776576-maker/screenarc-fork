@@ -383,9 +383,19 @@ export async function startRecording(options: any) {
     const allDisplays = screen.getAllDisplays()
     const targetDisplay = allDisplays.find((d) => d.id === displayId) || screen.getPrimaryDisplay()
     const { x, y, width, height } = targetDisplay.bounds
+    const scaleFactor = targetDisplay.scaleFactor || 1
+    
+    // For Windows, we need to use physical pixels for gdigrab
+    const physicalWidth = process.platform === 'win32' ? Math.floor((width * scaleFactor) / 2) * 2 : Math.floor(width / 2) * 2
+    const physicalHeight = process.platform === 'win32' ? Math.floor((height * scaleFactor) / 2) * 2 : Math.floor(height / 2) * 2
+    const physicalX = process.platform === 'win32' ? Math.floor(x * scaleFactor) : x
+    const physicalY = process.platform === 'win32' ? Math.floor(y * scaleFactor) : y
+    
+    // Store the logical dimensions for mouse tracking
     const safeWidth = Math.floor(width / 2) * 2
     const safeHeight = Math.floor(height / 2) * 2
     recordingGeometry = { x, y, width: safeWidth, height: safeHeight }
+    
     switch (process.platform) {
       case 'linux':
         baseFfmpegArgs.push(
@@ -406,11 +416,11 @@ export async function startRecording(options: any) {
           '-draw_mouse',
           '0',
           '-offset_x',
-          x.toString(),
+          physicalX.toString(),
           '-offset_y',
-          y.toString(),
+          physicalY.toString(),
           '-video_size',
-          `${safeWidth}x${safeHeight}`,
+          `${physicalWidth}x${physicalHeight}`,
           '-i',
           'desktop',
         )
@@ -444,6 +454,22 @@ export async function startRecording(options: any) {
     const safeHeight = Math.floor(selectedGeometry.height / 2) * 2
     recordingGeometry = { x: selectedGeometry.x, y: selectedGeometry.y, width: safeWidth, height: safeHeight }
 
+    // Get scale factor for the display containing the selection
+    const allDisplays = screen.getAllDisplays()
+    const containingDisplay = allDisplays.find((d) => {
+      const b = d.bounds
+      return selectedGeometry.x >= b.x && selectedGeometry.y >= b.y &&
+             selectedGeometry.x + selectedGeometry.width <= b.x + b.width &&
+             selectedGeometry.y + selectedGeometry.height <= b.y + b.height
+    }) || screen.getPrimaryDisplay()
+    const scaleFactor = containingDisplay.scaleFactor || 1
+
+    // For Windows, convert to physical pixels
+    const physicalWidth = process.platform === 'win32' ? Math.floor((safeWidth * scaleFactor) / 2) * 2 : safeWidth
+    const physicalHeight = process.platform === 'win32' ? Math.floor((safeHeight * scaleFactor) / 2) * 2 : safeHeight
+    const physicalX = process.platform === 'win32' ? Math.floor(selectedGeometry.x * scaleFactor) : selectedGeometry.x
+    const physicalY = process.platform === 'win32' ? Math.floor(selectedGeometry.y * scaleFactor) : selectedGeometry.y
+
     switch (process.platform) {
       case 'linux':
         baseFfmpegArgs.push(
@@ -464,11 +490,11 @@ export async function startRecording(options: any) {
           '-draw_mouse',
           '0',
           '-offset_x',
-          selectedGeometry.x.toString(),
+          physicalX.toString(),
           '-offset_y',
-          selectedGeometry.y.toString(),
+          physicalY.toString(),
           '-video_size',
-          `${safeWidth}x${safeHeight}`,
+          `${physicalWidth}x${physicalHeight}`,
           '-i',
           'desktop',
         )
