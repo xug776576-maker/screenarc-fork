@@ -22,6 +22,7 @@ export function createEditorWindow(
   recordingGeometry: RecordingGeometry,
   webcamVideoPath?: string,
   audioPath?: string,
+  scaleFactor: number = 1,
 ) {
   const bounds = store.get('windowBounds', { width: 1280, height: 800 }) as {
     x?: number
@@ -30,7 +31,7 @@ export function createEditorWindow(
     height: number
   }
 
-  appState.currentEditorSessionFiles = { screenVideoPath: videoPath, metadataPath, recordingGeometry, webcamVideoPath, audioPath }
+  appState.currentEditorSessionFiles = { screenVideoPath: videoPath, metadataPath, recordingGeometry, webcamVideoPath, audioPath, scaleFactor }
   log.info('[EditorWindow] Stored session files for cleanup:', appState.currentEditorSessionFiles)
 
   const isWindows = process.platform === 'win32'

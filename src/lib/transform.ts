@@ -1,4 +1,5 @@
 import { EASING_MAP } from './easing'
+import { DEFAULTS } from './constants'
 import { ZoomRegion, MetaDataItem } from '../types'
 
 // --- HELPER FUNCTIONS ---
@@ -35,17 +36,19 @@ export const findLastMetadataIndex = (metadata: MetaDataItem[], currentTime: num
 /**
  * Calculates a smoothed mouse position at a given time using Exponential Moving Average (EMA).
  * This prevents jerky panning by smoothing out rapid mouse movements.
+ * Implements a dead zone to ignore small movements and improve stability.
  */
 function getSmoothedMousePosition(
   metadata: MetaDataItem[],
   targetTime: number,
-  smoothingFactor = 0.05, // Reduced from 0.1 for smoother movement
+  smoothingFactor = DEFAULTS.CAMERA.MOVEMENT.SMOOTHING_FACTOR,
+  deadZone = DEFAULTS.CAMERA.MOVEMENT.DEAD_ZONE,
 ): { x: number; y: number } | null {
   const endIndex = findLastMetadataIndex(metadata, targetTime)
   if (endIndex < 0) return null
 
   // Start smoothing from a bit before the target time to build up the average
-  const startTime = Math.max(0, targetTime - 0.5)
+  const startTime = Math.max(0, targetTime - DEFAULTS.CAMERA.MOVEMENT.SMOOTHING_WINDOW)
   let startIndex = findLastMetadataIndex(metadata, startTime)
   if (startIndex < 0) startIndex = 0
 
@@ -55,8 +58,20 @@ function getSmoothedMousePosition(
   let smoothedY = metadata[startIndex].y
 
   for (let i = startIndex + 1; i <= endIndex; i++) {
-    smoothedX = lerp(smoothedX, metadata[i].x, smoothingFactor)
-    smoothedY = lerp(smoothedY, metadata[i].y, smoothingFactor)
+    const currentX = metadata[i].x
+    const currentY = metadata[i].y
+
+    // Calculate distance from current smoothed position to new position
+    const deltaX = currentX - smoothedX
+    const deltaY = currentY - smoothedY
+    const movementDistance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
+
+    // Apply dead zone: reduce smoothing factor for small movements
+    // This prevents camera from following tiny cursor adjustments
+    const effectiveSmoothingFactor = movementDistance > deadZone ? smoothingFactor : smoothingFactor * 0.3
+    
+    smoothedX = lerp(smoothedX, currentX, effectiveSmoothingFactor)
+    smoothedY = lerp(smoothedY, currentY, effectiveSmoothingFactor)
   }
 
   // Final interpolation for sub-frame accuracy
