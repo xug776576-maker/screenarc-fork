@@ -43,6 +43,9 @@ async function validateRecordingFiles(session: RecordingSession): Promise<boolea
   if (session.webcamVideoPath) {
     filesToValidate.push(session.webcamVideoPath)
   }
+  if (session.audioPath) {
+    filesToValidate.push(session.audioPath)
+  }
 
   for (const filePath of filesToValidate) {
     try {
@@ -72,6 +75,61 @@ async function validateRecordingFiles(session: RecordingSession): Promise<boolea
 }
 
 /**
+ * Trims the audio file by removing the specified amount from the beginning.
+ * @param audioPath - Path to the audio file to trim
+ * @param trimMs - Amount to trim from the beginning in milliseconds (default 1000ms)
+ * @returns Promise that resolves to the path of the trimmed audio file
+ */
+async function trimAudioFile(audioPath: string, trimMs: number = 1000): Promise<string> {
+  const trimmedPath = audioPath.replace(/\.aac$/, '-trimmed.aac')
+  const trimSeconds = trimMs / 1000
+
+  log.info(`[AudioTrim] Trimming ${trimMs}ms from beginning of ${audioPath}`)
+
+  return new Promise((resolve, reject) => {
+    const ffmpegArgs = [
+      '-y',
+      '-ss',
+      trimSeconds.toString(),
+      '-i',
+      audioPath,
+      '-c:a',
+      'copy',
+      trimmedPath,
+    ]
+
+    const ffmpeg = spawn(FFMPEG_PATH, ffmpegArgs)
+
+    ffmpeg.stderr.on('data', (data: any) => {
+      log.info(`[AudioTrim FFmpeg]: ${data.toString()}`)
+    })
+
+    ffmpeg.on('close', async (code: any) => {
+      if (code === 0) {
+        log.info(`[AudioTrim] Successfully trimmed audio, replacing original file`)
+        try {
+          // Replace original file with trimmed version
+          await fsPromises.unlink(audioPath)
+          await fsPromises.rename(trimmedPath, audioPath)
+          resolve(audioPath)
+        } catch (error) {
+          log.error(`[AudioTrim] Error replacing audio file:`, error)
+          reject(error)
+        }
+      } else {
+        log.error(`[AudioTrim] FFmpeg exited with code ${code}`)
+        reject(new Error(`Audio trim failed with code ${code}`))
+      }
+    })
+
+    ffmpeg.on('error', (error: any) => {
+      log.error(`[AudioTrim] FFmpeg error:`, error)
+      reject(error)
+    })
+  })
+}
+
+/**
  * The core function that spawns FFmpeg and the mouse tracker to begin recording.
  * @param inputArgs - Platform-specific FFmpeg input arguments.
  * @param hasWebcam - Flag indicating if webcam recording is enabled.
@@ -90,10 +148,11 @@ async function startActualRecording(
 
   const screenVideoPath = path.join(recordingDir, `${baseName}-screen.mp4`)
   const webcamVideoPath = hasWebcam ? path.join(recordingDir, `${baseName}-webcam.mp4`) : undefined
+  const audioPath = hasMic ? path.join(recordingDir, `${baseName}-audio.aac`) : undefined
   const metadataPath = path.join(recordingDir, `${baseName}.json`)
 
   // Store recordingGeometry in the session
-  appState.currentRecordingSession = { screenVideoPath, webcamVideoPath, metadataPath, recordingGeometry }
+  appState.currentRecordingSession = { screenVideoPath, webcamVideoPath, audioPath, metadataPath, recordingGeometry }
   appState.recorderWin?.minimize()
 
   // Reset state for the new session
@@ -130,7 +189,7 @@ async function startActualRecording(
     }
   }
 
-  const finalArgs = buildFfmpegArgs(inputArgs, hasWebcam, hasMic, screenVideoPath, webcamVideoPath)
+  const finalArgs = buildFfmpegArgs(inputArgs, hasWebcam, hasMic, screenVideoPath, webcamVideoPath, audioPath)
   log.info(`[FFMPEG] Starting FFmpeg with args: ${finalArgs.join(' ')}`)
   appState.ffmpegProcess = spawn(FFMPEG_PATH, finalArgs)
 
@@ -173,6 +232,7 @@ function buildFfmpegArgs(
   hasMic: boolean,
   screenOut: string,
   webcamOut?: string,
+  audioOut?: string,
 ): string[] {
   const finalArgs = [...inputArgs]
   // Determine the index of each input stream (mic, webcam, screen)
@@ -180,7 +240,7 @@ function buildFfmpegArgs(
   const webcamIndex = hasMic ? (hasWebcam ? 1 : -1) : hasWebcam ? 0 : -1
   const screenIndex = (hasMic ? 1 : 0) + (hasWebcam ? 1 : 0)
 
-  // Map screen video stream
+  // Map screen video stream (video only, no audio)
   finalArgs.push(
     '-map',
     `${screenIndex}:v`,
@@ -193,9 +253,9 @@ function buildFfmpegArgs(
     screenOut,
   )
 
-  // Map audio stream if present
-  if (hasMic) {
-    finalArgs.push('-map', `${micIndex}:a`, '-c:a', 'aac', '-b:a', '192k')
+  // Map audio stream to separate file if present
+  if (hasMic && audioOut) {
+    finalArgs.push('-map', `${micIndex}:a`, '-c:a', 'aac', '-b:a', '192k', audioOut)
   }
 
   // Map webcam video stream if present
@@ -323,9 +383,19 @@ export async function startRecording(options: any) {
     const allDisplays = screen.getAllDisplays()
     const targetDisplay = allDisplays.find((d) => d.id === displayId) || screen.getPrimaryDisplay()
     const { x, y, width, height } = targetDisplay.bounds
+    const scaleFactor = targetDisplay.scaleFactor || 1
+    
+    // For Windows, we need to use physical pixels for gdigrab
+    const physicalWidth = process.platform === 'win32' ? Math.floor((width * scaleFactor) / 2) * 2 : Math.floor(width / 2) * 2
+    const physicalHeight = process.platform === 'win32' ? Math.floor((height * scaleFactor) / 2) * 2 : Math.floor(height / 2) * 2
+    const physicalX = process.platform === 'win32' ? Math.floor(x * scaleFactor) : x
+    const physicalY = process.platform === 'win32' ? Math.floor(y * scaleFactor) : y
+    
+    // Store the logical dimensions for mouse tracking
     const safeWidth = Math.floor(width / 2) * 2
     const safeHeight = Math.floor(height / 2) * 2
     recordingGeometry = { x, y, width: safeWidth, height: safeHeight }
+    
     switch (process.platform) {
       case 'linux':
         baseFfmpegArgs.push(
@@ -346,11 +416,11 @@ export async function startRecording(options: any) {
           '-draw_mouse',
           '0',
           '-offset_x',
-          x.toString(),
+          physicalX.toString(),
           '-offset_y',
-          y.toString(),
+          physicalY.toString(),
           '-video_size',
-          `${safeWidth}x${safeHeight}`,
+          `${physicalWidth}x${physicalHeight}`,
           '-i',
           'desktop',
         )
@@ -384,6 +454,22 @@ export async function startRecording(options: any) {
     const safeHeight = Math.floor(selectedGeometry.height / 2) * 2
     recordingGeometry = { x: selectedGeometry.x, y: selectedGeometry.y, width: safeWidth, height: safeHeight }
 
+    // Get scale factor for the display containing the selection
+    const allDisplays = screen.getAllDisplays()
+    const containingDisplay = allDisplays.find((d) => {
+      const b = d.bounds
+      return selectedGeometry.x >= b.x && selectedGeometry.y >= b.y &&
+             selectedGeometry.x + selectedGeometry.width <= b.x + b.width &&
+             selectedGeometry.y + selectedGeometry.height <= b.y + b.height
+    }) || screen.getPrimaryDisplay()
+    const scaleFactor = containingDisplay.scaleFactor || 1
+
+    // For Windows, convert to physical pixels
+    const physicalWidth = process.platform === 'win32' ? Math.floor((safeWidth * scaleFactor) / 2) * 2 : safeWidth
+    const physicalHeight = process.platform === 'win32' ? Math.floor((safeHeight * scaleFactor) / 2) * 2 : safeHeight
+    const physicalX = process.platform === 'win32' ? Math.floor(selectedGeometry.x * scaleFactor) : selectedGeometry.x
+    const physicalY = process.platform === 'win32' ? Math.floor(selectedGeometry.y * scaleFactor) : selectedGeometry.y
+
     switch (process.platform) {
       case 'linux':
         baseFfmpegArgs.push(
@@ -404,15 +490,21 @@ export async function startRecording(options: any) {
           '-draw_mouse',
           '0',
           '-offset_x',
-          selectedGeometry.x.toString(),
+          physicalX.toString(),
           '-offset_y',
-          selectedGeometry.y.toString(),
+          physicalY.toString(),
           '-video_size',
-          `${safeWidth}x${safeHeight}`,
+          `${physicalWidth}x${physicalHeight}`,
           '-i',
           'desktop',
         )
         break
+      case 'darwin':
+        // Note: macOS avfoundation doesn't support area capture like gdigrab/x11grab
+        // Area selection on macOS would require a different approach
+        log.warn('[RecordingManager] Area selection not supported on macOS')
+        appState.recorderWin?.show()
+        return { canceled: true }
     }
   } else {
     return { canceled: true }
@@ -451,10 +543,22 @@ export async function stopRecording() {
   // Notify recorder window that the recording has finished, allowing it to reset its UI
   appState.recorderWin?.webContents.send('recording-finished', { canceled: false, ...session })
 
-  // Step 2: Process and save metadata (after video file is complete)
+  // Step 2: Trim audio file if present
+  if (session.audioPath) {
+    try {
+      log.info('[StopRecord] Trimming audio file by 1000ms...')
+      await trimAudioFile(session.audioPath, 1000)
+      log.info('[StopRecord] Audio file trimmed successfully.')
+    } catch (error) {
+      log.error('[StopRecord] Failed to trim audio file:', error)
+      // Continue anyway - audio is trimmed but not critical
+    }
+  }
+
+  // Step 3: Process and save metadata (after video file is complete)
   await processAndSaveMetadata(session)
 
-  // Step 3: Validate file
+  // Step 4: Validate file
   const isValid = await validateRecordingFiles(session)
   if (!isValid) {
     log.error('[StopRecord] Recording validation failed. Discarding files.')
@@ -477,6 +581,7 @@ export async function stopRecording() {
       session.metadataPath,
       session.recordingGeometry,
       session.webcamVideoPath,
+      session.audioPath,
     )
   }
   appState.recorderWin?.close()

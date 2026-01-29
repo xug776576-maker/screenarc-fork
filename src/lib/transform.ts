@@ -39,7 +39,7 @@ export const findLastMetadataIndex = (metadata: MetaDataItem[], currentTime: num
 function getSmoothedMousePosition(
   metadata: MetaDataItem[],
   targetTime: number,
-  smoothingFactor = 0.1,
+  smoothingFactor = 0.05, // Reduced from 0.1 for smoother movement
 ): { x: number; y: number } | null {
   const endIndex = findLastMetadataIndex(metadata, targetTime)
   if (endIndex < 0) return null
@@ -156,14 +156,15 @@ export const calculateZoomTransform = (
   let currentTranslateY = 0
 
   // --- Calculate Pan Targets ---
-  // let initialPan = { tx: 0, ty: 0 }
+  let initialPan = { tx: 0, ty: 0 }
   let livePan = { tx: 0, ty: 0 }
   let finalPan = { tx: 0, ty: 0 }
 
   if (mode === 'auto' && metadata.length > 0 && recordingGeometry.width > 0) {
-    // Pan target for the end of the zoom-in transition (STATIONARY)
-    // const initialMousePos = getSmoothedMousePosition(metadata, zoomInEndTime)
-    // initialPan = calculateBoundedPan(initialMousePos, fixedOrigin, zoomLevel, recordingGeometry, frameContentDimensions)
+    // Pan target for the end of the zoom-in transition (cursor position at that time)
+    const zoomInEndMousePos = getSmoothedMousePosition(metadata, zoomInEndTime)
+    const zoomInEndPan = calculateBoundedPan(zoomInEndMousePos, fixedOrigin, zoomLevel, recordingGeometry, frameContentDimensions)
+    initialPan = zoomInEndPan
 
     // Live pan target for the hold phase (DYNAMIC)
     const liveMousePos = getSmoothedMousePosition(metadata, currentTime)
@@ -176,19 +177,17 @@ export const calculateZoomTransform = (
 
   // --- Determine current transform based on phase ---
 
-  // Phase 1: ZOOM-IN (No panning, just move towards initial pan position)
+  // Phase 1: ZOOM-IN (Smoothly pan towards cursor while zooming in)
   if (currentTime >= startTime && currentTime < zoomInEndTime) {
-    console.log('is being zoom-in')
     const t = (EASING_MAP[easing as keyof typeof EASING_MAP] || EASING_MAP.Balanced)(
       (currentTime - startTime) / transitionDuration,
     )
     currentScale = lerp(1, zoomLevel, t)
-    // currentTranslateX = lerp(0, initialPan.tx, t)
-    // currentTranslateY = lerp(0, initialPan.ty, t)
+    currentTranslateX = lerp(0, initialPan.tx, t)
+    currentTranslateY = lerp(0, initialPan.ty, t)
   }
   // Phase 2: PAN/HOLD (Fully zoomed in, pan follows smoothed mouse)
   else if (currentTime >= zoomInEndTime && currentTime < zoomOutStartTime) {
-    console.log('is being pan/hold')
     currentScale = zoomLevel
     currentTranslateX = livePan.tx
     currentTranslateY = livePan.ty

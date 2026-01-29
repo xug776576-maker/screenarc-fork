@@ -160,6 +160,8 @@ export interface ProjectState {
   videoPath: string | null
   metadataPath: string | null
   videoUrl: string | null
+  audioPath: string | null
+  audioUrl: string | null
   videoDimensions: VideoDimensions
   recordingGeometry: RecordingGeometry | null
   screenSize: ScreenSize | null
@@ -175,7 +177,7 @@ export interface ProjectState {
 }
 
 export interface ProjectActions {
-  loadProject: (paths: { videoPath: string; metadataPath: string; webcamVideoPath?: string }) => Promise<void>
+  loadProject: (paths: { videoPath: string; metadataPath: string; webcamVideoPath?: string; audioPath?: string }) => Promise<void>
   setVideoDimensions: (dims: { width: number; height: number }) => void
   setDuration: (duration: number) => void
   resetProjectState: () => void

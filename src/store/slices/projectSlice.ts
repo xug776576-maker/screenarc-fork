@@ -16,6 +16,8 @@ export const initialProjectState: ProjectState = {
   videoPath: null,
   metadataPath: null,
   videoUrl: null,
+  audioPath: null,
+  audioUrl: null,
   videoDimensions: { width: 0, height: 0 },
   recordingGeometry: null,
   screenSize: null,
@@ -171,9 +173,10 @@ async function prepareMacOSCursorBitmaps(theme: CursorTheme, scale: number): Pro
 
 export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get) => ({
   ...initialProjectState,
-  loadProject: async ({ videoPath, metadataPath, webcamVideoPath }) => {
+  loadProject: async ({ videoPath, metadataPath, webcamVideoPath, audioPath }) => {
     const videoUrl = `media://${videoPath}`
     const webcamVideoUrl = webcamVideoPath ? `media://${webcamVideoPath}` : null
+    const audioUrl = audioPath ? `media://${audioPath}` : null
 
     get().resetProjectState() // Clear previous project data first
 
@@ -194,6 +197,9 @@ export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get
       state.webcamVideoPath = webcamVideoPath || null
       state.webcamVideoUrl = webcamVideoUrl
       state.isWebcamVisible = !!webcamVideoUrl
+      state.audioPath = audioPath || null
+      state.audioUrl = audioUrl
+      state.hasAudioTrack = !!audioUrl
     })
 
     try {

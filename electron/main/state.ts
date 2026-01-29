@@ -17,6 +17,7 @@ export interface RecordingSession {
   screenVideoPath: string
   metadataPath: string
   webcamVideoPath?: string
+  audioPath?: string
   recordingGeometry: RecordingGeometry
 }
 
