@@ -174,9 +174,14 @@ async function prepareMacOSCursorBitmaps(theme: CursorTheme, scale: number): Pro
 export const createProjectSlice: Slice<ProjectState, ProjectActions> = (set, get) => ({
   ...initialProjectState,
   loadProject: async ({ videoPath, metadataPath, webcamVideoPath, audioPath }) => {
-    const videoUrl = `media://${videoPath}`
-    const webcamVideoUrl = webcamVideoPath ? `media://${webcamVideoPath}` : null
-    const audioUrl = audioPath ? `media://${audioPath}` : null
+    // Always use media:// protocol for video, webcam, and audio URLs (revert to original logic)
+    const toUrl = (path: string | null | undefined) => {
+      if (!path) return null;
+      return `media://${path}`;
+    };
+    const videoUrl = toUrl(videoPath);
+    const webcamVideoUrl = toUrl(webcamVideoPath);
+    const audioUrl = toUrl(audioPath);
 
     get().resetProjectState() // Clear previous project data first
 

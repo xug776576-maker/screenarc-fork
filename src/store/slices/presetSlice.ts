@@ -59,6 +59,10 @@ export const createPresetSlice: Slice<PresetState, PresetActions> = (set, get) =
           p.webcamStyles.isFlipped = false
           wasModified = true
         }
+        if (p.webcamStyles && p.webcamStyles.sizeOnZoom === undefined) {
+          p.webcamStyles.sizeOnZoom = DEFAULTS.CAMERA.PLACEMENT.SIZE_ON_ZOOM.defaultValue;
+          wasModified = true;
+        }
         if (p.webcamStyles && p.webcamStyles.smartPosition === undefined) {
           p.webcamStyles.smartPosition = DEFAULTS.CAMERA.SMART_POSITION.ENABLED.defaultValue
           wasModified = true
