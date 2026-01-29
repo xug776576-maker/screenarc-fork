@@ -135,12 +135,14 @@ async function trimAudioFile(audioPath: string, trimMs: number = 1000): Promise<
  * @param hasWebcam - Flag indicating if webcam recording is enabled.
  * @param hasMic - Flag indicating if microphone recording is enabled.
  * @param recordingGeometry - The logical dimensions and position of the recording area.
+ * @param scaleFactor - The display scale factor (for Windows DPI scaling).
  */
 async function startActualRecording(
   inputArgs: string[],
   hasWebcam: boolean,
   hasMic: boolean,
   recordingGeometry: RecordingGeometry,
+  scaleFactor: number = 1,
 ) {
   const recordingDir = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.screenarc')
   await ensureDirectoryExists(recordingDir)
@@ -151,8 +153,8 @@ async function startActualRecording(
   const audioPath = hasMic ? path.join(recordingDir, `${baseName}-audio.aac`) : undefined
   const metadataPath = path.join(recordingDir, `${baseName}.json`)
 
-  // Store recordingGeometry in the session
-  appState.currentRecordingSession = { screenVideoPath, webcamVideoPath, audioPath, metadataPath, recordingGeometry }
+  // Store recordingGeometry and scaleFactor in the session
+  appState.currentRecordingSession = { screenVideoPath, webcamVideoPath, audioPath, metadataPath, recordingGeometry, scaleFactor }
   appState.recorderWin?.minimize()
 
   // Reset state for the new session
@@ -349,6 +351,7 @@ export async function startRecording(options: any) {
   const display = process.env.DISPLAY || ':0.0'
   const baseFfmpegArgs: string[] = []
   let recordingGeometry: RecordingGeometry
+  let recordingScaleFactor = 1  // Default to 1 for non-Windows or 100% scaling
 
   // --- Add Microphone and Webcam inputs first ---
   if (mic) {
@@ -384,6 +387,7 @@ export async function startRecording(options: any) {
     const targetDisplay = allDisplays.find((d) => d.id === displayId) || screen.getPrimaryDisplay()
     const { x, y, width, height } = targetDisplay.bounds
     const scaleFactor = targetDisplay.scaleFactor || 1
+    recordingScaleFactor = scaleFactor  // Store for metadata processing
     
     // For Windows, we need to use physical pixels for gdigrab
     const physicalWidth = process.platform === 'win32' ? Math.floor((width * scaleFactor) / 2) * 2 : Math.floor(width / 2) * 2
@@ -463,6 +467,7 @@ export async function startRecording(options: any) {
              selectedGeometry.y + selectedGeometry.height <= b.y + b.height
     }) || screen.getPrimaryDisplay()
     const scaleFactor = containingDisplay.scaleFactor || 1
+    recordingScaleFactor = scaleFactor  // Store for metadata processing
 
     // For Windows, convert to physical pixels
     const physicalWidth = process.platform === 'win32' ? Math.floor((safeWidth * scaleFactor) / 2) * 2 : safeWidth
@@ -515,7 +520,7 @@ export async function startRecording(options: any) {
     appState.originalCursorScale = await getCursorScale()
   }
   log.info('[RecordingManager] Starting actual recording with args:', baseFfmpegArgs)
-  return startActualRecording(baseFfmpegArgs, !!webcam, !!mic, recordingGeometry)
+  return startActualRecording(baseFfmpegArgs, !!webcam, !!mic, recordingGeometry, recordingScaleFactor)
 }
 
 /**
@@ -637,32 +642,58 @@ async function processAndSaveMetadata(session: RecordingSession): Promise<boolea
     const videoStartTime = await getVideoStartTime(session.screenVideoPath)
     log.info(`[SYNC] Precise video start time from ffprobe: ${new Date(videoStartTime).toISOString()}`)
 
-    const finalEvents = appState.recordedMouseEvents.map((event) => ({
-      ...event,
-      timestamp: Math.max(0, event.timestamp - videoStartTime),
-    }))
+    // On Windows, scale mouse coordinates to match physical video dimensions
+    const scaleFactor = session.scaleFactor || 1
+    const finalEvents = appState.recordedMouseEvents.map((event) => {
+      const scaledX = process.platform === 'win32' ? event.x * scaleFactor : event.x
+      const scaledY = process.platform === 'win32' ? event.y * scaleFactor : event.y
+      return {
+        ...event,
+        x: scaledX,
+        y: scaledY,
+        timestamp: Math.max(0, event.timestamp - videoStartTime),
+      }
+    })
+
+    // On Windows, also scale the recording geometry to match video dimensions
+    const scaledGeometry = process.platform === 'win32' 
+      ? {
+          x: Math.floor(session.recordingGeometry.x * scaleFactor),
+          y: Math.floor(session.recordingGeometry.y * scaleFactor),
+          width: Math.floor(session.recordingGeometry.width * scaleFactor),
+          height: Math.floor(session.recordingGeometry.height * scaleFactor),
+        }
+      : session.recordingGeometry
 
     const primaryDisplay = screen.getPrimaryDisplay()
     const finalMetadata = {
       platform: process.platform,
       screenSize: primaryDisplay.size,
-      geometry: session.recordingGeometry,
+      geometry: scaledGeometry,
       syncOffset: 0,
       cursorImages: Object.fromEntries(appState.runtimeCursorImageMap || []),
       events: finalEvents,
     }
 
     await fsPromises.writeFile(session.metadataPath, JSON.stringify(finalMetadata))
-    log.info(`Metadata saved to ${session.metadataPath}`)
+    log.info(`[SYNC] Metadata saved to ${session.metadataPath}`)
     return true
   } catch (err) {
     log.error(`Failed to process and save metadata: ${err}`)
     // Write an empty metadata file to avoid Editor crash
+    const scaledGeometry = process.platform === 'win32' 
+      ? {
+          x: Math.floor(session.recordingGeometry.x * (session.scaleFactor || 1)),
+          y: Math.floor(session.recordingGeometry.y * (session.scaleFactor || 1)),
+          width: Math.floor(session.recordingGeometry.width * (session.scaleFactor || 1)),
+          height: Math.floor(session.recordingGeometry.height * (session.scaleFactor || 1)),
+        }
+      : session.recordingGeometry
     const errorMetadata = {
       platform: process.platform,
       events: [],
       cursorImages: {},
-      geometry: session.recordingGeometry,
+      geometry: scaledGeometry,
       screenSize: screen.getPrimaryDisplay().size,
       syncOffset: 0,
     }
@@ -808,6 +839,7 @@ export async function loadVideoFromFile() {
       metadataPath,
       webcamVideoPath: undefined,
       recordingGeometry: { x: 0, y: 0, width: 0, height: 0 },
+      scaleFactor: 1,  // No scaling for imported videos
     }
     const isValid = await validateRecordingFiles(session)
     if (!isValid) {

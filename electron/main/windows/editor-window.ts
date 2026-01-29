@@ -30,7 +30,7 @@ export function createEditorWindow(
     height: number
   }
 
-  appState.currentEditorSessionFiles = { screenVideoPath: videoPath, metadataPath, recordingGeometry, webcamVideoPath, audioPath }
+  appState.currentEditorSessionFiles = { screenVideoPath: videoPath, metadataPath, recordingGeometry, webcamVideoPath, audioPath, scaleFactor: 1 }
   log.info('[EditorWindow] Stored session files for cleanup:', appState.currentEditorSessionFiles)
 
   const isWindows = process.platform === 'win32'
