@@ -31,7 +31,7 @@ const generateFilename = (format: 'mp4' | 'gif') => {
   let filename = `ScreenArc-${timestamp}.${format}`
   // Fix slashes for Windows
   if (typeof window !== 'undefined' && window.process && window.process.platform === 'win32') {
-    filename = filename.replaceAll('/', '\\')
+     filename = filename.split('/').join('\\')
   }
   return filename
 }
@@ -103,7 +103,7 @@ const SettingsView = ({
         let homePath = await window.electronAPI.getPath('home')
         const filename = generateFilename(settings.format)
         if (typeof window !== 'undefined' && window.process && window.process.platform === 'win32') {
-          homePath = homePath.replaceAll('/', '\\')
+            homePath = homePath.split('/').join('\\')
           setOutputPath(`${homePath}\\${filename}`)
         } else {
           setOutputPath(`${homePath}/${filename}`)
@@ -210,7 +210,7 @@ const SettingsView = ({
         <Button onClick={() => {
           let fixedOutputPath = outputPath
           if (typeof window !== 'undefined' && window.process && window.process.platform === 'win32') {
-            fixedOutputPath = outputPath.replaceAll('/', '\\')
+            fixedOutputPath = outputPath.split('/').join('\\')
           }
           onStartExport(settings, fixedOutputPath)
         }} disabled={!outputPath}>

@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import fsPromises from 'node:fs/promises'
 import { appState } from '../state'
 import { getFFmpegPath, calculateExportDimensions } from '../lib/utils'
-import { execSync, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { VITE_DEV_SERVER_URL, RENDERER_DIST, PRELOAD_SCRIPT } from '../lib/constants'
 
 const FFMPEG_PATH = getFFmpegPath()
@@ -60,7 +60,12 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
     fps.toString(),
     '-i',
     '-',
-  ]
+  ];
+
+  // Add audio input if present
+  if (projectState.audioPath) {
+    ffmpegArgs.push('-f', 'aac', '-i', projectState.audioPath);
+  }
 
   // --- Hardware acceleration auto-detect with real encoder check ---
   // --- Detect GPU type for encoder selection (Windows only) ---
@@ -107,6 +112,10 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
     } else {
       ffmpegArgs.push('-c:v', 'libx264', '-preset', 'medium', '-pix_fmt', 'yuv420p')
       log.info('[ExportManager] Using software encoding (libx264)')
+    }
+    // If audio present, map video and audio, set audio codec
+    if (projectState.audioPath) {
+      ffmpegArgs.push('-c:a', 'aac', '-map', '0:v:0', '-map', '1:a:0');
     }
   } else {
     ffmpegArgs.push('-vf', 'split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse')

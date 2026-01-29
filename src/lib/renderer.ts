@@ -5,16 +5,7 @@ import { DEFAULTS } from './constants'
 
 type Rect = { x: number; y: number; width: number; height: number }
 
-const ADJACENT_POSITIONS: Record<WebcamPosition['pos'], [WebcamPosition['pos'], WebcamPosition['pos']]> = {
-  'top-left': ['top-center', 'left-center'],
-  'top-center': ['top-left', 'top-right'],
-  'top-right': ['top-center', 'right-center'],
-  'right-center': ['top-right', 'bottom-right'],
-  'bottom-right': ['right-center', 'bottom-center'],
-  'bottom-center': ['bottom-right', 'bottom-left'],
-  'bottom-left': ['bottom-center', 'left-center'],
-  'left-center': ['bottom-left', 'top-left'],
-}
+
 
 function getWebcamRectForPosition(
   pos: WebcamPosition['pos'],
@@ -46,9 +37,7 @@ function getWebcamRectForPosition(
   }
 }
 
-function isPointInRect(point: { x: number; y: number }, rect: Rect): boolean {
-  return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height
-}
+
 
 function lerp(start: number, end: number, t: number): number {
   return start * (1 - t) + end * t
@@ -381,7 +370,7 @@ export const drawScene = async (
     let startSize = webcamStyles.size;
     let targetSize = webcamStyles.sizeOnZoom;
     let t = 0;
-    let isZooming = false;
+    // removed unused isZooming
     if (webcamStyles.scaleOnZoom) {
       const activeZoomRegion = Object.values(state.zoomRegions).find(
         (r) => currentTime >= r.startTime && currentTime < r.startTime + r.duration,
@@ -394,13 +383,11 @@ export const drawScene = async (
         if (currentTime < zoomInEndTime) {
           // Zooming in
           t = easingFn((currentTime - startTime) / transitionDuration);
-          isZooming = true;
         } else if (currentTime >= zoomOutStartTime) {
           // Zooming out
           t = easingFn((currentTime - zoomOutStartTime) / transitionDuration);
           // Swap start/target for reverse interpolation
           [startSize, targetSize] = [targetSize, startSize];
-          isZooming = true;
         } else {
           // Fully zoomed
           startSize = targetSize;

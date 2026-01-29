@@ -54,6 +54,8 @@ export const useExportProcess = () => {
       cursorTheme: fullState.cursorTheme,
       cursorStyles: fullState.cursorStyles,
       syncOffset: fullState.syncOffset,
+      audioPath: fullState.audioPath,
+      audioUrl: fullState.audioUrl,
     }
 
     setResult(null)
