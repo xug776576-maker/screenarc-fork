@@ -57,30 +57,21 @@ function getSmoothedMousePosition(
   let smoothedX = metadata[startIndex].x
   let smoothedY = metadata[startIndex].y
 
-  // Track the last significant position for dead zone calculation
-  let lastSignificantX = smoothedX
-  let lastSignificantY = smoothedY
-
   for (let i = startIndex + 1; i <= endIndex; i++) {
     const currentX = metadata[i].x
     const currentY = metadata[i].y
 
-    // Calculate movement delta in pixels
-    const deltaX = currentX - lastSignificantX
-    const deltaY = currentY - lastSignificantY
+    // Calculate distance from current smoothed position to new position
+    const deltaX = currentX - smoothedX
+    const deltaY = currentY - smoothedY
     const movementDistance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
 
-    // Only update if movement exceeds dead zone
-    if (movementDistance > deadZone) {
-      smoothedX = lerp(smoothedX, currentX, smoothingFactor)
-      smoothedY = lerp(smoothedY, currentY, smoothingFactor)
-      lastSignificantX = currentX
-      lastSignificantY = currentY
-    } else {
-      // Still apply minimal smoothing to maintain continuity
-      smoothedX = lerp(smoothedX, currentX, smoothingFactor * 0.3)
-      smoothedY = lerp(smoothedY, currentY, smoothingFactor * 0.3)
-    }
+    // Apply dead zone: reduce smoothing factor for small movements
+    // This prevents camera from following tiny cursor adjustments
+    const effectiveSmoothingFactor = movementDistance > deadZone ? smoothingFactor : smoothingFactor * 0.3
+    
+    smoothedX = lerp(smoothedX, currentX, effectiveSmoothingFactor)
+    smoothedY = lerp(smoothedY, currentY, effectiveSmoothingFactor)
   }
 
   // Final interpolation for sub-frame accuracy

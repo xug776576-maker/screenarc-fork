@@ -587,6 +587,7 @@ export async function stopRecording() {
       session.recordingGeometry,
       session.webcamVideoPath,
       session.audioPath,
+      session.scaleFactor,
     )
   }
   appState.recorderWin?.close()
@@ -637,6 +638,26 @@ async function cleanupAndSave(): Promise<void> {
  * @param session The current recording session.
  * @returns A promise that resolves to true on success, false on failure.
  */
+/**
+ * Helper function to scale recording geometry for Windows high-DPI displays
+ */
+function getScaledGeometry(geometry: RecordingGeometry, scaleFactor: number): RecordingGeometry {
+  if (process.platform !== 'win32' || scaleFactor === 1) {
+    return geometry
+  }
+  return {
+    x: Math.floor(geometry.x * scaleFactor),
+    y: Math.floor(geometry.y * scaleFactor),
+    width: Math.floor(geometry.width * scaleFactor),
+    height: Math.floor(geometry.height * scaleFactor),
+  }
+}
+
+/**
+ * Processes mouse events against the final video start time and saves the metadata file.
+ * @param session The current recording session.
+ * @returns A promise that resolves to true on success, false on failure.
+ */
 async function processAndSaveMetadata(session: RecordingSession): Promise<boolean> {
   try {
     const videoStartTime = await getVideoStartTime(session.screenVideoPath)
@@ -656,14 +677,7 @@ async function processAndSaveMetadata(session: RecordingSession): Promise<boolea
     })
 
     // On Windows, also scale the recording geometry to match video dimensions
-    const scaledGeometry = process.platform === 'win32' 
-      ? {
-          x: Math.floor(session.recordingGeometry.x * scaleFactor),
-          y: Math.floor(session.recordingGeometry.y * scaleFactor),
-          width: Math.floor(session.recordingGeometry.width * scaleFactor),
-          height: Math.floor(session.recordingGeometry.height * scaleFactor),
-        }
-      : session.recordingGeometry
+    const scaledGeometry = getScaledGeometry(session.recordingGeometry, scaleFactor)
 
     const primaryDisplay = screen.getPrimaryDisplay()
     const finalMetadata = {
@@ -681,14 +695,7 @@ async function processAndSaveMetadata(session: RecordingSession): Promise<boolea
   } catch (err) {
     log.error(`Failed to process and save metadata: ${err}`)
     // Write an empty metadata file to avoid Editor crash
-    const scaledGeometry = process.platform === 'win32' 
-      ? {
-          x: Math.floor(session.recordingGeometry.x * (session.scaleFactor || 1)),
-          y: Math.floor(session.recordingGeometry.y * (session.scaleFactor || 1)),
-          width: Math.floor(session.recordingGeometry.width * (session.scaleFactor || 1)),
-          height: Math.floor(session.recordingGeometry.height * (session.scaleFactor || 1)),
-        }
-      : session.recordingGeometry
+    const scaledGeometry = getScaledGeometry(session.recordingGeometry, session.scaleFactor || 1)
     const errorMetadata = {
       platform: process.platform,
       events: [],
@@ -851,7 +858,7 @@ export async function loadVideoFromFile() {
 
     await new Promise((resolve) => setTimeout(resolve, 500))
     appState.savingWin?.close()
-    createEditorWindow(screenVideoPath, metadataPath, session.recordingGeometry, undefined)
+    createEditorWindow(screenVideoPath, metadataPath, session.recordingGeometry, undefined, undefined, session.scaleFactor)
     recorderWindow.close()
     return { canceled: false, filePath: screenVideoPath }
   } catch (error) {
