@@ -89,10 +89,10 @@ async function trimAudioFile(audioPath: string, trimMs: number = 1000): Promise<
   return new Promise((resolve, reject) => {
     const ffmpegArgs = [
       '-y',
-      '-i',
-      audioPath,
       '-ss',
       trimSeconds.toString(),
+      '-i',
+      audioPath,
       '-c:a',
       'copy',
       trimmedPath,
@@ -499,6 +499,12 @@ export async function startRecording(options: any) {
           'desktop',
         )
         break
+      case 'darwin':
+        // Note: macOS avfoundation doesn't support area capture like gdigrab/x11grab
+        // Area selection on macOS would require a different approach
+        log.warn('[RecordingManager] Area selection not supported on macOS')
+        appState.recorderWin?.show()
+        return { canceled: true }
     }
   } else {
     return { canceled: true }

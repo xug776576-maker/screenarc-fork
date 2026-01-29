@@ -161,12 +161,10 @@ export const calculateZoomTransform = (
   let finalPan = { tx: 0, ty: 0 }
 
   if (mode === 'auto' && metadata.length > 0 && recordingGeometry.width > 0) {
-    // Pan target for the start of zoom-in (from center)
-    initialPan = { tx: 0, ty: 0 }
-
     // Pan target for the end of the zoom-in transition (cursor position at that time)
     const zoomInEndMousePos = getSmoothedMousePosition(metadata, zoomInEndTime)
     const zoomInEndPan = calculateBoundedPan(zoomInEndMousePos, fixedOrigin, zoomLevel, recordingGeometry, frameContentDimensions)
+    initialPan = zoomInEndPan
 
     // Live pan target for the hold phase (DYNAMIC)
     const liveMousePos = getSmoothedMousePosition(metadata, currentTime)
@@ -175,9 +173,6 @@ export const calculateZoomTransform = (
     // Pan target for the start of the zoom-out transition (STATIONARY)
     const finalMousePos = getSmoothedMousePosition(metadata, zoomOutStartTime)
     finalPan = calculateBoundedPan(finalMousePos, fixedOrigin, zoomLevel, recordingGeometry, frameContentDimensions)
-
-    // Store zoomInEndPan for use in zoom-in phase
-    initialPan = zoomInEndPan
   }
 
   // --- Determine current transform based on phase ---

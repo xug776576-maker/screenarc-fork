@@ -237,13 +237,19 @@ export const Preview = memo(
       const audio = audioRef.current
       if (video) {
         // Video is always muted when we have a separate audio track
-        video.muted = true
+        if (audioUrl) {
+          video.muted = true
+        } else {
+          // No separate audio, use video's own audio
+          video.volume = volume
+          video.muted = isMuted
+        }
       }
       if (audio) {
         audio.volume = volume
         audio.muted = isMuted
       }
-    }, [volume, isMuted, videoRef])
+    }, [volume, isMuted, videoRef, audioUrl])
 
     useEffect(() => {
       const video = videoRef.current
@@ -254,8 +260,13 @@ export const Preview = memo(
           (r) => video.currentTime >= r.startTime && video.currentTime < r.startTime + r.duration,
         )
         if (activeCutRegion) {
-          video.currentTime = activeCutRegion.startTime + activeCutRegion.duration
-          setCurrentTime(video.currentTime)
+          const newTime = activeCutRegion.startTime + activeCutRegion.duration
+          video.currentTime = newTime
+          setCurrentTime(newTime)
+          // Sync audio with the jump
+          if (audioRef.current) {
+            audioRef.current.currentTime = newTime
+          }
         }
       }
     }, [isCurrentlyCut, isPlaying, videoRef, setCurrentTime])
@@ -276,6 +287,11 @@ export const Preview = memo(
       if (endTrimRegion && newTime >= endTrimRegion.startTime) {
         video.currentTime = endTrimRegion.startTime
         video.pause()
+        // Also pause audio
+        if (audio) {
+          audio.currentTime = endTrimRegion.startTime
+          audio.pause()
+        }
       }
       if (webcamVideoRef.current) {
         webcamVideoRef.current.currentTime = newTime
@@ -297,12 +313,16 @@ export const Preview = memo(
         setDuration(video.duration)
         setVideoDimensions({ width: video.videoWidth, height: video.videoHeight })
 
-        // Check for audio tracks using type-safe checks
-        const hasAudioTracks = video.audioTracks && video.audioTracks.length > 0
-        const hasMozAudio = 'mozHasAudio' in video && video.mozHasAudio === true
-        const hasWebkitAudio = 'webkitHasAudio' in video && video.webkitHasAudio === true
+        // Only check video for audio tracks if we don't have a separate audio file
+        const store = useEditorStore.getState()
+        if (!store.audioUrl) {
+          // Check for audio tracks using type-safe checks
+          const hasAudioTracks = video.audioTracks && video.audioTracks.length > 0
+          const hasMozAudio = 'mozHasAudio' in video && video.mozHasAudio === true
+          const hasWebkitAudio = 'webkitHasAudio' in video && video.webkitHasAudio === true
 
-        setHasAudioTrack(!!(hasAudioTracks || hasMozAudio || hasWebkitAudio))
+          setHasAudioTrack(!!(hasAudioTracks || hasMozAudio || hasWebkitAudio))
+        }
 
         const timeFromStore = useEditorStore.getState().currentTime
 
@@ -326,6 +346,19 @@ export const Preview = memo(
           webcamVideo.pause()
         } else {
           webcamVideo.play().catch(console.error)
+        }
+      }
+    }, [videoRef])
+
+    const handleAudioLoadedMetadata = useCallback(() => {
+      const video = videoRef.current
+      const audio = audioRef.current
+      if (video && audio) {
+        audio.currentTime = video.currentTime
+        if (video.paused) {
+          audio.pause()
+        } else {
+          audio.play().catch(console.error)
         }
       }
     }, [videoRef])
@@ -399,6 +432,7 @@ export const Preview = memo(
           <audio
             ref={audioRef}
             src={audioUrl}
+            onLoadedMetadata={handleAudioLoadedMetadata}
             style={{ display: 'none' }}
           />
         )}
