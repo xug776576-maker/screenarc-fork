@@ -85,7 +85,8 @@ export const DEFAULTS = {
       SCALE_ON_ZOOM: { defaultValue: true },
     },
     PLACEMENT: {
-      SIZE: { min: 10, max: 50, step: 1, defaultValue: 40 },
+      SIZE: { min: 10, max: 100, step: 1, defaultValue: 40 },
+      SIZE_ON_ZOOM: { min: 10, max: 80, step: 1, defaultValue: 40 },
       POSITION: { defaultValue: 'bottom-right' },
     },
     EFFECTS: {

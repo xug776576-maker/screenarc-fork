@@ -10,6 +10,7 @@ export const initialWebcamState: WebcamState = {
     shape: 'square',
     borderRadius: 35,
     size: 30,
+    sizeOnZoom: DEFAULTS.CAMERA.PLACEMENT.SIZE_ON_ZOOM.defaultValue,
     shadowBlur: 20,
     shadowOffsetX: 0,
     shadowOffsetY: 10,

@@ -254,7 +254,7 @@ export function CameraSettings() {
               <div className="space-y-6">
                 <div className="space-y-3">
                   <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground">
-                    <span>Size</span>
+                    <span>Size (Normal)</span>
                     <span className="text-xs font-semibold text-primary tabular-nums">{webcamStyles.size}%</span>
                   </label>
                   <Slider
@@ -263,6 +263,19 @@ export function CameraSettings() {
                     step={DEFAULTS.CAMERA.PLACEMENT.SIZE.step}
                     value={webcamStyles.size}
                     onChange={(value) => updateWebcamStyle({ size: value })}
+                  />
+                </div>
+                <div className="space-y-3">
+                  <label className="flex items-center justify-between text-sm font-medium text-sidebar-foreground">
+                    <span>Size (Zoomed)</span>
+                    <span className="text-xs font-semibold text-primary tabular-nums">{webcamStyles.sizeOnZoom}%</span>
+                  </label>
+                  <Slider
+                    min={DEFAULTS.CAMERA.PLACEMENT.SIZE_ON_ZOOM.min}
+                    max={DEFAULTS.CAMERA.PLACEMENT.SIZE_ON_ZOOM.max}
+                    step={DEFAULTS.CAMERA.PLACEMENT.SIZE_ON_ZOOM.step}
+                    value={webcamStyles.sizeOnZoom}
+                    onChange={(value) => updateWebcamStyle({ sizeOnZoom: value })}
                   />
                 </div>
                 <div className="space-y-3">

@@ -377,134 +377,80 @@ export const drawScene = async (
     }
 
     const baseSize = Math.min(outputWidth, outputHeight)
-    let initialWebcamWidth, initialWebcamHeight
+    // Interpolate both position and size between normal and zoomed states
+    let startSize = webcamStyles.size;
+    let targetSize = webcamStyles.sizeOnZoom;
+    let t = 0;
+    let isZooming = false;
+    if (webcamStyles.scaleOnZoom) {
+      const activeZoomRegion = Object.values(state.zoomRegions).find(
+        (r) => currentTime >= r.startTime && currentTime < r.startTime + r.duration,
+      );
+      if (activeZoomRegion) {
+        const { startTime, duration, transitionDuration } = activeZoomRegion;
+        const zoomInEndTime = startTime + transitionDuration;
+        const zoomOutStartTime = startTime + duration - transitionDuration;
+        const easingFn = EASING_MAP[activeZoomRegion.easing as keyof typeof EASING_MAP] || EASING_MAP.Balanced;
+        if (currentTime < zoomInEndTime) {
+          // Zooming in
+          t = easingFn((currentTime - startTime) / transitionDuration);
+          isZooming = true;
+        } else if (currentTime >= zoomOutStartTime) {
+          // Zooming out
+          t = easingFn((currentTime - zoomOutStartTime) / transitionDuration);
+          // Swap start/target for reverse interpolation
+          [startSize, targetSize] = [targetSize, startSize];
+          isZooming = true;
+        } else {
+          // Fully zoomed
+          startSize = targetSize;
+          t = 1;
+        }
+      }
+    }
+
+    // Only animate size, not position
+    let webcamWidth, webcamHeight;
     if (webcamStyles.shape === 'rectangle') {
-      initialWebcamWidth = baseSize * (webcamStyles.size / 100)
-      initialWebcamHeight = initialWebcamWidth * (9 / 16)
+      webcamWidth = baseSize * (lerp(startSize, targetSize, t) / 100);
+      webcamHeight = webcamWidth * (9 / 16);
     } else {
-      initialWebcamWidth = baseSize * (webcamStyles.size / 100)
-      initialWebcamHeight = initialWebcamWidth
+      webcamWidth = baseSize * (lerp(startSize, targetSize, t) / 100);
+      webcamHeight = webcamWidth;
     }
-
-    const originalPos = webcamPosition.pos
-    let currentPos = originalPos
-    let previousPos = originalPos
-    let timeOfChange = 0
-
-    if (webcamStyles.smartPosition) {
-      const getTargetPosAtTime = (time: number): WebcamPosition['pos'] => {
-        const originalRect = getWebcamRectForPosition(
-          originalPos,
-          initialWebcamWidth,
-          initialWebcamHeight,
-          outputWidth,
-          outputHeight,
-        )
-        const futureCursorIndex = findLastMetadataIndex(
-          state.metadata,
-          time + DEFAULTS.CAMERA.SMART_POSITION.LOOKAHEAD_TIME,
-        )
-        if (futureCursorIndex > -1) {
-          const futureCursorEvent = state.metadata[futureCursorIndex]
-          const cursorCanvasX = (futureCursorEvent.x / state.recordingGeometry!.width) * frameContentWidth + frameX
-          const cursorCanvasY = (futureCursorEvent.y / state.recordingGeometry!.height) * frameContentHeight + frameY
-          if (isPointInRect({ x: cursorCanvasX, y: cursorCanvasY }, originalRect)) {
-            const [adj1, adj2] = ADJACENT_POSITIONS[originalPos]
-            const adj1Rect = getWebcamRectForPosition(
-              adj1,
-              initialWebcamWidth,
-              initialWebcamHeight,
-              outputWidth,
-              outputHeight,
-            )
-            return !isPointInRect({ x: cursorCanvasX, y: cursorCanvasY }, adj1Rect) ? adj1 : adj2
-          }
-        }
-        return originalPos
-      }
-
-      currentPos = getTargetPosAtTime(currentTime)
-      const checkInterval = 0.05
-
-      for (let t = currentTime; t >= 0; t -= checkInterval) {
-        const posAtT = getTargetPosAtTime(t)
-        if (posAtT !== currentPos) {
-          previousPos = posAtT
-          timeOfChange = t + checkInterval
-          break
-        }
-        if (t === 0) {
-          previousPos = currentPos
-          timeOfChange = 0
-        }
-      }
-    }
-
-    const transitionDuration = DEFAULTS.CAMERA.SMART_POSITION.TRANSITION_DURATION
-    let progress = 1
-    if (previousPos !== currentPos && currentTime - timeOfChange < transitionDuration) {
-      progress = (currentTime - timeOfChange) / transitionDuration
-    }
-
-    const easingFn = EASING_MAP[DEFAULTS.CAMERA.SMART_POSITION.EASING as keyof typeof EASING_MAP] || EASING_MAP.Balanced
-    const easedProgress = easingFn(Math.min(1, progress))
-
-    const startRect = getWebcamRectForPosition(
-      previousPos,
-      initialWebcamWidth,
-      initialWebcamHeight,
+    // Always use the selected position
+    const webcamRect = getWebcamRectForPosition(
+      webcamPosition.pos,
+      webcamWidth,
+      webcamHeight,
       outputWidth,
       outputHeight,
-    )
-    const targetRect = getWebcamRectForPosition(
-      currentPos,
-      initialWebcamWidth,
-      initialWebcamHeight,
-      outputWidth,
-      outputHeight,
-    )
+    );
+    // Use fixed position from webcamRect, apply scale for drawing
+    let webcamX = webcamRect.x;
+    let webcamY = webcamRect.y;
+    const scaledWebcamWidth = webcamRect.width * finalWebcamScale;
+    const scaledWebcamHeight = webcamRect.height * finalWebcamScale;
 
-    const baseWebcamX = lerp(startRect.x, targetRect.x, easedProgress)
-    const baseWebcamY = lerp(startRect.y, targetRect.y, easedProgress)
-
-    const webcamWidth = initialWebcamWidth * finalWebcamScale
-    const webcamHeight = initialWebcamHeight * finalWebcamScale
-
-    let webcamX = baseWebcamX
-    let webcamY = baseWebcamY
-
-    if (originalPos.includes('right')) {
-      webcamX += initialWebcamWidth - webcamWidth
-    } else if (originalPos === 'top-center' || originalPos === 'bottom-center') {
-      webcamX += (initialWebcamWidth - webcamWidth) / 2
-    }
-
-    if (originalPos.includes('bottom')) {
-      webcamY += initialWebcamHeight - webcamHeight
-    } else if (originalPos === 'left-center' || originalPos === 'right-center') {
-      webcamY += (initialWebcamHeight - webcamHeight) / 2
-    }
-
-    const maxRadius = Math.min(webcamWidth, webcamHeight) / 2
-    let webcamRadius = 0
-
+    const maxRadius = Math.min(scaledWebcamWidth, scaledWebcamHeight) / 2;
+    let webcamRadius = 0;
     if (webcamStyles.shape === 'circle') {
-      webcamRadius = maxRadius
+      webcamRadius = maxRadius;
     } else {
-      webcamRadius = maxRadius * (webcamStyles.borderRadius / 50)
+      webcamRadius = maxRadius * (webcamStyles.borderRadius / 50);
     }
 
     if (webcamStyles.shadowBlur > 0) {
-      ctx.save()
-      ctx.shadowColor = webcamStyles.shadowColor
-      ctx.shadowBlur = webcamStyles.shadowBlur
-      ctx.shadowOffsetX = webcamStyles.shadowOffsetX
-      ctx.shadowOffsetY = webcamStyles.shadowOffsetY
-      const webcamShadowPath = new Path2D()
-      webcamShadowPath.roundRect(webcamX, webcamY, webcamWidth, webcamHeight, webcamRadius)
-      ctx.fillStyle = 'rgba(0,0,0,1)'
-      ctx.fill(webcamShadowPath)
-      ctx.restore()
+      ctx.save();
+      ctx.shadowColor = webcamStyles.shadowColor;
+      ctx.shadowBlur = webcamStyles.shadowBlur;
+      ctx.shadowOffsetX = webcamStyles.shadowOffsetX;
+      ctx.shadowOffsetY = webcamStyles.shadowOffsetY;
+      const webcamShadowPath = new Path2D();
+      webcamShadowPath.roundRect(webcamX, webcamY, scaledWebcamWidth, scaledWebcamHeight, webcamRadius);
+      ctx.fillStyle = 'rgba(0,0,0,1)';
+      ctx.fill(webcamShadowPath);
+      ctx.restore();
     }
 
     const webcamVideo = webcamVideoElement

@@ -139,6 +139,7 @@ export interface WebcamStyles {
   shape: WebcamShape
   borderRadius: number
   size: number
+  sizeOnZoom: number // нове поле для розміру під час zoom
   shadowBlur: number
   shadowOffsetX: number
   shadowOffsetY: number
