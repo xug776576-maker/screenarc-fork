@@ -165,17 +165,28 @@ async function startActualRecording(
 
   if (appState.mouseTracker) {
     appState.mouseTracker.on('data', (data: any) => {
+      // Normalize mouse coordinates based on platform
+      // On Windows, mouse events come in physical pixels (with DPI scaling)
+      // On other platforms, they're in logical pixels
+      let normalizedX = data.x
+      let normalizedY = data.y
+      
+      if (process.platform === 'win32') {
+        normalizedX = data.x / scaleFactor
+        normalizedY = data.y / scaleFactor
+      }
+      
       // Check if the mouse event is within the recording geometry bounds
       if (
-        data.x >= recordingGeometry.x &&
-        data.x <= recordingGeometry.x + recordingGeometry.width &&
-        data.y >= recordingGeometry.y &&
-        data.y <= recordingGeometry.y + recordingGeometry.height
+        normalizedX >= recordingGeometry.x &&
+        normalizedX <= recordingGeometry.x + recordingGeometry.width &&
+        normalizedY >= recordingGeometry.y &&
+        normalizedY <= recordingGeometry.y + recordingGeometry.height
       ) {
         const absoluteEvent = {
           ...data,
-          x: data.x - recordingGeometry.x,
-          y: data.y - recordingGeometry.y,
+          x: normalizedX - recordingGeometry.x,
+          y: normalizedY - recordingGeometry.y,
           timestamp: data.timestamp,
         }
         appState.recordedMouseEvents.push(absoluteEvent)

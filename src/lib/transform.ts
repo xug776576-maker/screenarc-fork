@@ -139,6 +139,12 @@ function getTransformOrigin(targetX: number, targetY: number): { x: number; y: n
   return { x: targetX + 0.5, y: targetY + 0.5 }
 }
 
+// Store previous pan position for smooth interpolation during pan/hold phase
+let previousPanX = 0
+let previousPanY = 0
+let lastPanUpdateTime = 0
+const PAN_SMOOTHING_FACTOR = 0.15 // Adjust this value (0-1) to control smoothness. Lower = smoother but slower.
+
 export const calculateZoomTransform = (
   currentTime: number,
   zoomRegions: Record<string, ZoomRegion>,
@@ -200,12 +206,28 @@ export const calculateZoomTransform = (
     currentScale = lerp(1, zoomLevel, t)
     currentTranslateX = lerp(0, initialPan.tx, t)
     currentTranslateY = lerp(0, initialPan.ty, t)
+    
+    // Update tracking for phase 2
+    previousPanX = currentTranslateX
+    previousPanY = currentTranslateY
+    lastPanUpdateTime = currentTime
   }
-  // Phase 2: PAN/HOLD (Fully zoomed in, pan follows smoothed mouse)
+  // Phase 2: PAN/HOLD (Fully zoomed in, pan follows smoothed mouse with smooth interpolation)
   else if (currentTime >= zoomInEndTime && currentTime < zoomOutStartTime) {
     currentScale = zoomLevel
-    currentTranslateX = livePan.tx
-    currentTranslateY = livePan.ty
+    
+    // Smooth interpolation between previous position and target position
+    // This creates fluid camera movement without jitter
+    const timeDelta = currentTime - lastPanUpdateTime
+    const effectiveSmoothingFactor = Math.min(PAN_SMOOTHING_FACTOR, timeDelta > 0 ? 1 : 0)
+    
+    currentTranslateX = lerp(previousPanX, livePan.tx, effectiveSmoothingFactor)
+    currentTranslateY = lerp(previousPanY, livePan.ty, effectiveSmoothingFactor)
+    
+    // Update for next frame
+    previousPanX = currentTranslateX
+    previousPanY = currentTranslateY
+    lastPanUpdateTime = currentTime
   }
   // Phase 3: ZOOM-OUT (No panning, move from final pan position back to center)
   else if (currentTime >= zoomOutStartTime && currentTime <= startTime + duration) {
@@ -215,6 +237,11 @@ export const calculateZoomTransform = (
     currentScale = lerp(zoomLevel, 1, t)
     currentTranslateX = lerp(finalPan.tx, 0, t)
     currentTranslateY = lerp(finalPan.ty, 0, t)
+    
+    // Reset tracking for next zoom region
+    previousPanX = 0
+    previousPanY = 0
+    lastPanUpdateTime = currentTime
   }
 
   return { scale: currentScale, translateX: currentTranslateX, translateY: currentTranslateY, transformOrigin }
