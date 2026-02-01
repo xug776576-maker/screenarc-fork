@@ -260,8 +260,9 @@ function buildFfmpegArgs(
     '-c:v',
     'libx264',
     '-preset',
-    'fast', // Higher quality/compression (more CPU)
-    '-crf', '16', // Higher quality
+    'ultrafast', // Lowest CPU usage
+    '-crf', '18', // Good quality
+    '-tune', 'zerolatency', // Optimize for real-time
     '-profile:v',
     'high',
     '-level',
@@ -284,9 +285,10 @@ function buildFfmpegArgs(
       '-c:v',
       'libx264',
       '-preset',
-      'fast',
+      'ultrafast',
       '-crf',
-      '16',
+      '18',
+      '-tune', 'zerolatency',
       '-profile:v',
       'high',
       '-level',

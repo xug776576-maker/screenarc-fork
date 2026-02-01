@@ -529,6 +529,14 @@ export function RendererPage() {
         }
 
         for (let frame = 0; frame < totalFrames; frame++) {
+          // Backpressure handling to prevent hanging on slower systems
+          if (videoEncoder && videoEncoder.encodeQueueSize > 2) {
+            // Wait for the queue to drain
+            while (videoEncoder.encodeQueueSize > 2) {
+              await new Promise((resolve) => setTimeout(resolve, 5))
+            }
+          }
+
           lastProgress = Math.min(99, ((frame + 1) / totalFrames) * 100)
           const exportTimestamp = frame / fps
           const sourceTimestamp = mapExportTimeToSourceTime(
