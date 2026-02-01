@@ -15,6 +15,10 @@ import { appState } from './state'
 // --- Initialization ---
 setupLogging()
 
+// Enable WebCodecs in renderer/worker contexts
+app.commandLine.appendSwitch('enable-features', 'WebCodecs,WebCodecsExperimental')
+app.commandLine.appendSwitch('enable-blink-features', 'WebCodecs,WebCodecsExperimental')
+
 // --- App Lifecycle Events ---
 app.on('window-all-closed', () => {
   log.info('[App] All windows closed. Quitting.')

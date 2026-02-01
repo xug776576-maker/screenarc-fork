@@ -153,12 +153,13 @@ const drawBackground = async (
 export const drawScene = async (
   ctx: CanvasRenderingContext2D,
   state: RenderableState,
-  videoElement: HTMLVideoElement,
-  webcamVideoElement: HTMLVideoElement | null,
+  videoElement: CanvasImageSource,
+  webcamVideoElement: CanvasImageSource | null,
   currentTime: number,
   outputWidth: number,
   outputHeight: number,
   preloadedBgImage: HTMLImageElement | null,
+  webcamDimensions?: { width: number; height: number },
 ): Promise<void> => {
   if (!state.videoDimensions.width || !state.videoDimensions.height) return
 
@@ -341,7 +342,23 @@ export const drawScene = async (
 
   // --- 6. Draw Webcam ---
   const { webcamPosition, webcamStyles, isWebcamVisible } = state
-  if (isWebcamVisible && webcamVideoElement && webcamVideoElement.videoWidth > 0 && state.recordingGeometry) {
+  const webcamDims = (() => {
+    if (webcamDimensions) return webcamDimensions
+    if (!webcamVideoElement) return null
+    const anyWebcam = webcamVideoElement as any
+    if (typeof anyWebcam.videoWidth === 'number' && typeof anyWebcam.videoHeight === 'number') {
+      return { width: anyWebcam.videoWidth, height: anyWebcam.videoHeight }
+    }
+    if (typeof anyWebcam.displayWidth === 'number' && typeof anyWebcam.displayHeight === 'number') {
+      return { width: anyWebcam.displayWidth, height: anyWebcam.displayHeight }
+    }
+    if (typeof anyWebcam.codedWidth === 'number' && typeof anyWebcam.codedHeight === 'number') {
+      return { width: anyWebcam.codedWidth, height: anyWebcam.codedHeight }
+    }
+    return null
+  })()
+
+  if (isWebcamVisible && webcamVideoElement && webcamDims && webcamDims.width > 0 && state.recordingGeometry) {
     let finalWebcamScale = 1
     if (webcamStyles.scaleOnZoom) {
       const activeZoomRegion = Object.values(state.zoomRegions).find(
@@ -440,21 +457,20 @@ export const drawScene = async (
       ctx.restore();
     }
 
-    const webcamVideo = webcamVideoElement
-    const webcamAR = webcamVideo.videoWidth / webcamVideo.videoHeight
+    const webcamAR = webcamDims.width / webcamDims.height
     const targetAR = webcamWidth / webcamHeight
 
     let sx = 0,
       sy = 0,
-      sWidth = webcamVideo.videoWidth,
-      sHeight = webcamVideo.videoHeight
+      sWidth = webcamDims.width,
+      sHeight = webcamDims.height
 
     if (webcamAR > targetAR) {
-      sWidth = webcamVideo.videoHeight * targetAR
-      sx = (webcamVideo.videoWidth - sWidth) / 2
+      sWidth = webcamDims.height * targetAR
+      sx = (webcamDims.width - sWidth) / 2
     } else {
-      sHeight = webcamVideo.videoWidth / targetAR
-      sy = (webcamVideo.videoHeight - sHeight) / 2
+      sHeight = webcamDims.width / targetAR
+      sy = (webcamDims.height - sHeight) / 2
     }
 
     ctx.save()
@@ -468,7 +484,7 @@ export const drawScene = async (
     const webcamPath = new Path2D()
     webcamPath.roundRect(drawX, webcamY, webcamWidth, webcamHeight, webcamRadius)
     ctx.clip(webcamPath)
-    ctx.drawImage(webcamVideo, sx, sy, sWidth, sHeight, drawX, webcamY, webcamWidth, webcamHeight)
+    ctx.drawImage(webcamVideoElement, sx, sy, sWidth, sHeight, drawX, webcamY, webcamWidth, webcamHeight)
     ctx.restore()
   }
 }

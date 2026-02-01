@@ -127,6 +127,7 @@ export const electronAPI = {
   },
 
   readFile: (filePath: string): Promise<string> => ipcRenderer.invoke('fs:readFile', filePath),
+  readFileBuffer: (filePath: string): Promise<Uint8Array> => ipcRenderer.invoke('fs:readFileBuffer', filePath),
 
   // --- Export ---
   startExport: (payload: ExportPayload): Promise<void> => ipcRenderer.invoke('export:start', payload),
@@ -173,6 +174,9 @@ export const electronAPI = {
   },
   finishRender: () => {
     ipcRenderer.send('export:render-finished')
+  },
+  sendRenderError: (payload: { error: string }) => {
+    ipcRenderer.send('export:render-error', payload)
   },
 
   // --- Presets & Settings ---

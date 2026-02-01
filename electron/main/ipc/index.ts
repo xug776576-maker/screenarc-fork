@@ -40,6 +40,7 @@ export function registerIpcHandlers() {
 
   // File System
   ipcMain.handle('fs:readFile', fsHandlers.handleReadFile)
+  ipcMain.handle('fs:readFileBuffer', fsHandlers.handleReadFileBuffer)
 
   // Settings & Presets
   ipcMain.handle('presets:load', settingsHandlers.loadPresets)

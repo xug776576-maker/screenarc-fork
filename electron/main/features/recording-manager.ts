@@ -260,8 +260,12 @@ function buildFfmpegArgs(
     '-c:v',
     'libx264',
     '-preset',
-    'ultrafast', // Keep ultrafast for low CPU usage during recording
-    '-crf', '18', // High quality (visually lossless)
+    'fast', // Higher quality/compression (more CPU)
+    '-crf', '16', // Higher quality
+    '-profile:v',
+    'high',
+    '-level',
+    '5.1',
     '-pix_fmt',
     'yuv420p',
     screenOut,
@@ -280,7 +284,13 @@ function buildFfmpegArgs(
       '-c:v',
       'libx264',
       '-preset',
-      'ultrafast',
+      'fast',
+      '-crf',
+      '16',
+      '-profile:v',
+      'high',
+      '-level',
+      '5.1',
       '-pix_fmt',
       'yuv420p',
       webcamOut,

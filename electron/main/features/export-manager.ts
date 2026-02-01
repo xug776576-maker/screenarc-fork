@@ -28,8 +28,10 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
     height: 720,
     webPreferences: {
       preload: PRELOAD_SCRIPT,
-      offscreen: true,
+      offscreen: false,
       webSecurity: false,
+      enableBlinkFeatures: 'WebCodecs,WebCodecsExperimental',
+      backgroundThrottling: false,
     },
   })
   if (VITE_DEV_SERVER_URL) {
@@ -224,7 +226,7 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
     // If audio present
     if (projectState.audioPath) {
       // Use input #1 (audio) which is either processed or original
-      ffmpegArgs.push('-map', '0:v:0', '-map', '1:a:0', '-c:a', 'aac')
+      ffmpegArgs.push('-map', '0:v:0', '-map', '1:a:0', '-c:a', 'aac', '-shortest')
     }
   } else {
     ffmpegArgs.push('-vf', 'split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse')
@@ -234,11 +236,13 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
   log.info('[ExportManager] Spawning FFmpeg with args:', ffmpegArgs.join(' '))
   const ffmpeg = spawn(FFMPEG_PATH, ffmpegArgs)
   let ffmpegClosed = false
+  let exportCompleted = false
 
   ffmpeg.stderr.on('data', (data) => log.info(`[FFmpeg stderr]: ${data.toString()}`))
 
   const cancellationHandler = () => {
     log.warn('[ExportManager] Received "export:cancel". Terminating export.')
+    exportCompleted = true
     if (ffmpeg && !ffmpeg.killed) {
       ffmpeg.kill('SIGKILL')
     }
@@ -275,8 +279,31 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
     }
   }
 
+  const renderErrorListener = (_e: any, { error }: { error: string }) => {
+    log.error('[ExportManager] Render error:', error)
+    exportCompleted = true
+    if (ffmpeg && !ffmpeg.killed) {
+      ffmpeg.kill('SIGKILL')
+    }
+    if (appState.renderWorker && !appState.renderWorker.isDestroyed()) {
+      appState.renderWorker.close()
+    }
+    appState.renderWorker = null
+
+    if (editorWindow && !editorWindow.isDestroyed()) {
+      editorWindow.webContents.send('export:complete', { success: false, error })
+    }
+
+    // Clean up all listeners
+    ipcMain.removeListener('export:frame-data', frameListener)
+    ipcMain.removeListener('export:render-finished', finishListener)
+    ipcMain.removeListener('export:cancel', cancellationHandler)
+    ipcMain.removeListener('export:render-error', renderErrorListener)
+  }
+
   ipcMain.on('export:frame-data', frameListener)
   ipcMain.on('export:render-finished', finishListener)
+  ipcMain.on('export:render-error', renderErrorListener)
   ipcMain.once('export:cancel', cancellationHandler) // Use once to avoid multiple calls
 
   ffmpeg.on('close', (code) => {
@@ -298,24 +325,27 @@ export async function startExport(event: IpcMainInvokeEvent, { projectState, exp
     }
     appState.renderWorker = null
 
-    // Check if the editor window still exists before sending a message
-    if (editorWindow && !editorWindow.isDestroyed()) {
-      if (code === null) {
-        // Cancelled by SIGKILL
-        editorWindow.webContents.send('export:complete', { success: false, error: 'Export cancelled.' })
-      } else if (code === 0) {
-        editorWindow.webContents.send('export:complete', { success: true, outputPath })
+    if (!exportCompleted) {
+      // Check if the editor window still exists before sending a message
+      if (editorWindow && !editorWindow.isDestroyed()) {
+        if (code === null) {
+          // Cancelled by SIGKILL
+          editorWindow.webContents.send('export:complete', { success: false, error: 'Export cancelled.' })
+        } else if (code === 0) {
+          editorWindow.webContents.send('export:complete', { success: true, outputPath })
+        } else {
+          editorWindow.webContents.send('export:complete', { success: false, error: `FFmpeg exited with code ${code}` })
+        }
       } else {
-        editorWindow.webContents.send('export:complete', { success: false, error: `FFmpeg exited with code ${code}` })
+        log.warn('[ExportManager] Editor window was destroyed. Could not send export:complete message.')
       }
-    } else {
-      log.warn('[ExportManager] Editor window was destroyed. Could not send export:complete message.')
     }
 
     // Clean up all listeners
     ipcMain.removeListener('export:frame-data', frameListener)
     ipcMain.removeListener('export:render-finished', finishListener)
     ipcMain.removeListener('export:cancel', cancellationHandler)
+    ipcMain.removeListener('export:render-error', renderErrorListener)
   })
 
   ipcMain.once('render:ready', () => {
